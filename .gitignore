@@ -90,3 +90,6 @@ target/
 cap/
 
 text.txt
+projectflow.txt
+notebooks/
+local_s3
