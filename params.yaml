@@ -1,0 +1,4 @@
+data_ingestion:
+  test_size: 0.2
+  s3_bucket: "complaints-datagrid-project"
+  s3_file_key: "data.csv"
