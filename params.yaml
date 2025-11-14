@@ -34,12 +34,14 @@ model_evaluation:
   metrics_path: "reports/metrics.json"    
   experiment_info_path: "reports/experiment_info.json"
   model_name: "sentiment-classifier"
-  
+
 mlflow_config:
   mlflow_tracking_uri: "https://dagshub.com/SyedAmer-9/Capstone_MLOps_Project.mlflow"
   dagshub_repo_owner: 'SyedAmer-9'
   dagshub_repo_name: 'Capstone_MLOps_Project'
   experiment_name: "Production Pipeline Run"
 
-
+app:
+  host: "0.0.0.0"
+  port: 5001
   

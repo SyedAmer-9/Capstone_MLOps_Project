@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 import os
-from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.feature_extraction.text import TfidfVectorizer
 import yaml
 from src.logger import logging
 import dill
@@ -38,11 +38,11 @@ def load_data(file_path: str) -> pd.DataFrame:
         logging.error('Unexpected error occurred while loading the data: %s', e)
         raise
 
-def apply_bow_and_save_vectorizer(train_data: pd.DataFrame, test_data: pd.DataFrame, max_features: int) -> tuple:
+def apply_tfidf_and_save_vectorizer(train_data: pd.DataFrame, test_data: pd.DataFrame, max_features: int) -> tuple:
     
     try:
-        logging.info("Applying BOW...")
-        vectorizer = CountVectorizer(max_features=max_features)
+        logging.info("Applying TF-IDF...")
+        vectorizer = TfidfVectorizer(max_features=max_features)
 
         X_train = train_data['review'].values
         y_train = train_data['sentiment'].values
@@ -98,7 +98,7 @@ def main():
         test_data = load_data('./data/interim/test_processed.csv')
 
         
-        X_train_sparse, y_train, X_test_sparse, y_test = apply_bow_and_save_vectorizer(train_data, test_data, max_features)
+        X_train_sparse, y_train, X_test_sparse, y_test = apply_tfidf_and_save_vectorizer(train_data, test_data, max_features)
 
    
         save_processed_data(X_train_sparse, y_train, X_test_sparse, y_test, data_path='./data')
