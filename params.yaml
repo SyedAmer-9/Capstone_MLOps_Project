@@ -2,3 +2,44 @@ data_ingestion:
   test_size: 0.2
   s3_bucket: "complaints-datagrid-project"
   s3_file_key: "data.csv"
+
+data_preprocessing:
+  raw_data_path: "data/raw" # Input path
+  interim_data_path: "data/interim" # Output path
+
+feature_engineering:
+  interim_data_path: "data/interim" # Input path
+  processed_data_path: "data/processed" # Output path for final data
+  models_path: "models" # Output path for the vectorizer
+  vectorizer_file_name: "vectorizer.pkl"
+  train_data_file: "train.csv"
+  test_data_file: "test.csv"
+  max_features: 3000
+
+model_training:
+  processed_data_path: "data/processed" # Input path
+  model_save_path: "models" # Output path
+  model_file_name: "model.pkl"
+
+  LogisticRegression:
+    params:
+      C: 1.0 
+      penalty: 'l2'
+      solver: 'liblinear'
+      max_iter: 1000
+
+model_evaluation:
+  model_path: "models/model.pkl" # Input path
+  test_data_path: "data/processed" # Input path for test data
+  metrics_path: "reports/metrics.json"    
+  experiment_info_path: "reports/experiment_info.json"
+  model_name: "sentiment-classifier"
+  
+mlflow_config:
+  mlflow_tracking_uri: "https://dagshub.com/SyedAmer-9/Capstone_MLOps_Project.mlflow"
+  dagshub_repo_owner: 'SyedAmer-9'
+  dagshub_repo_name: 'Capstone_MLOps_Project'
+  experiment_name: "Production Pipeline Run"
+
+
+  

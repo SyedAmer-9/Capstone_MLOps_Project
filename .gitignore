@@ -96,3 +96,4 @@ local_s3
 todoist.txt
 /data/
 capstone-user_accessKeys.csv
+/models/

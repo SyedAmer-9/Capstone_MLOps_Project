@@ -58,7 +58,7 @@ def save_data(train_data:pd.DataFrame,test_data:pd.DataFrame,data_path:str)->Non
         os.makedirs(raw_data_path,exist_ok=True)
         train_data.to_csv(os.path.join(raw_data_path,'train.csv'),index=False)
         test_data.to_csv(os.path.join(raw_data_path,'test.csv'),index=False)
-        logging.debug('Train and test data saved to %s',raw_data_path)
+        logging.info('Train and test data saved to %s',raw_data_path)
 
     except Exception as e:
         logging.error("Unexpected error occurred while saving the data : %s",e)
