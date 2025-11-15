@@ -252,6 +252,7 @@ if __name__ == "__main__":
         app_port = int(PARAMS.get('app', {}).get('port', 5000))
         
         app_run(app, host=app_host, port=app_port)
+        
     except Exception as e:
         logging.error(f"Failed to start app: {e}")
         sys.exit(1)
