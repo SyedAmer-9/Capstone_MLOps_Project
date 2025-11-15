@@ -225,8 +225,12 @@ async def predict(request:Request):
         prediction = pipeline.predict(text_input)
 
         return templates.TemplateResponse(
-            'index.html',{'request':request,'result':f"Prediction : {prediction.upper()}"}
-        )
+    'index.html',{
+        'request':request,
+        'result':f"Prediction : {prediction.upper()}",
+        'sentiment': prediction 
+    }
+)
     except Exception as e:
         logging.exception("Error during /predict")
         return templates.TemplateResponse(
