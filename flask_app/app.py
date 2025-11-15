@@ -241,6 +241,7 @@ async def predict(request:Request):
         REQUEST_LATENCY.labels(endpoint="/predict").observe(time.time() - start_time)
 
 @app.get("/metrics")
+
 def metrics():
     # Expose only our custom Prometheus metrics.
     return Response(generate_latest(registry), media_type=CONTENT_TYPE_LATEST)  
