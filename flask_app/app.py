@@ -236,6 +236,7 @@ async def predict(request:Request):
         return templates.TemplateResponse(
             "index.html", {"request": request, "result": f"Error: {e}"},
         )
+    
     finally:
         REQUEST_LATENCY.labels(endpoint="/predict").observe(time.time() - start_time)
 
