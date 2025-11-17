@@ -60,7 +60,7 @@ def load_model_info(file_path: str) -> dict:
 
 def register_model(model_name:str,model_info:dict):
     try:
-        model_uri = f'runs:/{model_info['run_id']}/{model_info['model_path']}'
+        model_uri = f"runs:/{model_info['run_id']}/{model_info['model_path']}"
         logging.info(f"Registering model from URI :{model_uri}")
 
         model_version=mlflow.register_model(model_uri,model_name)
