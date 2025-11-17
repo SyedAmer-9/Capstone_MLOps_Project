@@ -36,9 +36,9 @@ jobs:
     
       - name: Set up DVC
         run: |
-          dvc remote modify origin --local auth basic
-          dvc remote modify origin --local user ${{ secrets.DAGSHUB_USER_TOKEN }}
-          dvc remote modify origin --local password ${{ secrets.DAGSHUB_USER_TOKEN }}
+          dvc remote modify myremote --local auth basic
+          dvc remote modify myremote --local user ${{ secrets.DAGSHUB_USER_TOKEN }}
+          dvc remote modify myremote --local password ${{ secrets.DAGSHUB_USER_TOKEN }}
     
       - name: Run DVC pipeline
         env:
