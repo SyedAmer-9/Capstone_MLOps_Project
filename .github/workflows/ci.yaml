@@ -39,3 +39,13 @@ jobs:
           DAGSHUB_USER_TOKEN: ${{ secrets.DAGSHUB_USER_TOKEN }}
         run: |
           dvc repro
+      - name: Test model quality
+        run: |
+          python -m unittest tests/test_model.py -v
+      
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-results
+          path: reports/
