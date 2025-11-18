@@ -13,6 +13,31 @@ from scipy.sparse import load_npz
 from src.logger import logging
 from dotenv import load_dotenv
 
+# -----------------------------------------------------------------
+# THE FIX: Robustly find and load the .env file
+# -----------------------------------------------------------------
+# Get the directory of this script (src/model)
+THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Walk up to the project root (Capstone_MLOps_Project)
+# src/model -> src -> Capstone_MLOps_Project
+PROJECT_ROOT = os.path.dirname(os.path.dirname(THIS_DIR))
+
+# Define the absolute path to the .env file
+ENV_FILE_PATH = os.path.join(PROJECT_ROOT, ".env")
+
+# Load it explicitly
+if os.path.exists(ENV_FILE_PATH):
+    load_dotenv(dotenv_path=ENV_FILE_PATH)
+    logging.info(f"Loaded environment variables from: {ENV_FILE_PATH}")
+else:
+    logging.warning(f"WARNING: .env file not found at {ENV_FILE_PATH}")
+
+# Verify the token is loaded
+dagshub_token = os.getenv("DAGSHUB_USER_TOKEN")
+if not dagshub_token:
+    raise EnvironmentError(f"DAGSHUB_USER_TOKEN is missing. Checked file: {ENV_FILE_PATH}")
+
 load_dotenv()
 
 def load_params(params_path: str) -> dict:

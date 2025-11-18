@@ -50,7 +50,7 @@ def load_params(params_path: str = 'params.yaml') -> dict:
         logging.error(f"Error loading {params_path}: {e}")
         raise e
 
-PARAMS = load_params()
+PARAMS = load_params(PARAMS_FILE_PATH)
 logging.info("Loaded params.yaml")
 
 def setup_mlflow():
@@ -249,7 +249,7 @@ def metrics():
 if __name__ == "__main__":
     try:
         app_host = PARAMS.get('app', {}).get('host', '0.0.0.0')
-        app_port = int(PARAMS.get('app', {}).get('port', 5000))
+        app_port = int(PARAMS.get('app', {}).get('port', 5001))
         
         app_run(app, host=app_host, port=app_port)
         
