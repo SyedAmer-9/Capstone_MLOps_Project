@@ -1,9 +1,27 @@
-dagshub==0.4.2
-Flask==3.1.0
-mlflow==2.19.0
-mlflow_skinny==2.19.0
-nltk==3.9.1
-numpy==2.2.1
-pandas==2.2.3
+# Minimal dependencies for Flask app only
+fastapi==0.121.2
+uvicorn[standard]
+jinja2
+python-dotenv
+pyyaml
+
+# ML Core
+numpy==1.26.4
+pandas==2.2.2
+scikit-learn==1.5.1
+scipy==1.14.0
+nltk==3.8.1
+
+# MLflow (use the version from your project)
+mlflow==2.15.0
+dagshub==0.3.34
+
+# AWS
+boto3
+botocore
+
+# Monitoring
 prometheus_client
-dotenv
+
+# Utilities
+dill
