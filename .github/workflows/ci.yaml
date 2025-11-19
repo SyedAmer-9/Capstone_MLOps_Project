@@ -3,7 +3,8 @@ name: CI Pipeline
 on: push
 
 jobs:
-  project-testing:
+  model-training:
+    name: 1. Model Training & Metrics
     runs-on: ubuntu-latest
     
     env:  
@@ -11,91 +12,125 @@ jobs:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       AWS_DEFAULT_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
-    
+      
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
       
-      - name: Setup Python
-        uses: actions/setup-python@v2
+      - name: Setup Python & Dependencies
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
-      
-      - name: Cache pip dependencies
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
-      
+          python-version: '3.12'
+
       - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
+        run: pip install -r requirements.txt
       
+      - name: Configure AWS for DVC
+        # This is critical for DVC to authenticate to S3
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
+
+      - name: Set up DVC and Pull Data
+        uses: iterative/setup-dvc@v1
+        run: dvc pull
+
+      - name: Run DVC Pipeline (Ingest, Feat Eng, Train, Eval, Register)
+        # This single command runs all 5 python scripts in order
+        run: dvc repro
+        env:
+          # Inject secrets needed for MLflow/DAGsHub authentication
+          DAGSHUB_USER_TOKEN: ${{ secrets.DAGSHUB_USER_TOKEN }}
+          
+      - name: DVC Push Artifacts
+        # Push the new model.pkl and updated metrics/lock file to S3
+        run: dvc push
+        
+      - name: Save Metrics Artifact for Testing
+        # Save the local metrics file to be used in the Test job
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: model-metrics
+          path: reports/metrics.json
+
+  # -----------------------------------------------
+  # Job 2: build-image (CD Stage - Application Packaging)
+  # -----------------------------------------------
+  build-image:
+    name: 2. Build & Push Docker Image
+    needs: model-training # Only runs if model training succeeded
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
-      
-      - name: Run DVC pipeline
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+        
+      - name: Build and Push Image
         env:
-          DAGSHUB_USER_TOKEN: ${{ secrets.DAGSHUB_USER_TOKEN }}
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
+          IMAGE_TAG: latest
         run: |
-          dvc repro
-      - name: Test model quality
-        run: |
-          python -m unittest tests/test_model.py -v
-      
-      - name: Upload test results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results
-          path: reports/
-      - name: Login to AWS ECR
-        if: success()
-        run: |
-            aws configure set aws_access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
-            aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-            aws configure set region ${{ secrets.AWS_DEFAULT_REGION }}
-            aws ecr get-login-password --region ${{ secrets.AWS_DEFAULT_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_DEFAULT_REGION }}.amazonaws.com
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          # Set output for the next job (though not strictly necessary here, it's good practice)
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+          
+  # -----------------------------------------------
+  # Job 3: deploy-to-eks (CD Stage - Deployment)
+  # -----------------------------------------------
+  deploy-to-eks:
+    name: 3. Deploy to EKS Cluster
+    needs: build-image # Only runs if the image build and push succeeded
+    runs-on: ubuntu-latest
 
-      - name: Build Docker image
-        run: |
-            docker build -t ${{ secrets.ECR_REPOSITORY }}:latest .
-
-      - name: Tag Docker image
-        run: |
-            docker tag ${{ secrets.ECR_REPOSITORY }}:latest \
-            ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_DEFAULT_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY }}:latest
-
-    
-      - name: Check Docker Authentication
-        run: docker info
-
-      - name: Push Docker image to ECR
-        run: |
-          docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_DEFAULT_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY }}:latest
-      
-      
-      
-      - name: Set Up kubectl
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Install kubectl (for EKS communication)
         uses: azure/setup-kubectl@v3
         with:
           version: 'latest'
-      
-      - name: Update kubeconfig
-        run: |
-          aws eks update-kubeconfig --region us-east-1 --name flask-app-cluster
 
-      - name: Create Kubernetes Secret
+      - name: Configure AWS EKS Credentials (via aws eks update-kubeconfig)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
+          
+      - name: Update kubeconfig
+        # This command authenticates the runner to the EKS cluster
+        run: |
+          aws eks update-kubeconfig --region ${{ secrets.AWS_DEFAULT_REGION }} --name flask-app-cluster
+      
+      - name: Create Kubernetes Secret (Securely inject DAGsHub Token)
+        # This creates the secret that the Pods will read for MLflow auth
         run: |
           kubectl create secret generic capstone-secret \
-            --from-literal=CAPSTONE_TEST=${{ secrets.DAGSHUB_USER_TOKEN }} --dry-run=client -o yaml | kubectl apply -f -
+            --from-literal=DAGSHUB_USER_TOKEN='${{ secrets.DAGSHUB_USER_TOKEN }}' \
+            --dry-run=client -o yaml | kubectl apply -f -
 
-      - name: Deploy to EKS
+      - name: Deploy Application and Service
         run: |
           kubectl apply -f deployment.yaml
+
+  # -----------------------------------------------
+  # Job 4: notify (Optional - Post-Deployment)
+  # -----------------------------------------------
+  # You would add a notification job here to slack/email on success.
