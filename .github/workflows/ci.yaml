@@ -44,8 +44,22 @@ jobs:
           # Inject token for model_evaluation.py to register model
           DAGSHUB_USER_TOKEN: ${{ secrets.DAGSHUB_USER_TOKEN }}
           
-      - name: DVC Push Artifacts
+      - name: DVC Push Artifacts (Secure)
+        # This explicitly uses the configured credentials to talk to S3
         run: dvc push
+        env:
+          # Inject the AWS secrets directly into the DVC push environment
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
+
+      # --- CRITICAL FIX: Upload Vectorizer as Artifact ---
+      # This is the necessary backup to ensure the image builds even if S3 fails
+      - name: Upload Vectorizer for Docker Build
+        uses: actions/upload-artifact@v4
+        with:
+          name: vectorizer-artifact
+          path: models/vectorizer.pkl
         
       - name: Save Metrics Artifact for Testing
         if: always()
