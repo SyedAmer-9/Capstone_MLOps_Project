@@ -26,7 +26,6 @@ jobs:
         run: pip install -r requirements.txt
       
       - name: Configure AWS for DVC
-        # This is critical for DVC to authenticate to S3
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -36,19 +35,16 @@ jobs:
       
 
       - name: Run DVC Pipeline (Ingest, Feat Eng, Train, Eval, Register)
-        # This single command runs all 5 python scripts in order
         run: dvc repro
         env:
-          # Inject secrets needed for MLflow/DAGsHub authentication
+          # Inject token for model_evaluation.py to register model
           DAGSHUB_USER_TOKEN: ${{ secrets.DAGSHUB_USER_TOKEN }}
           
       - name: DVC Push Artifacts
-        # Push the new model.pkl and updated metrics/lock file to S3
         run: dvc push
         
       - name: Save Metrics Artifact for Testing
-        # Save the local metrics file to be used in the Test job
-        if: success()
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: model-metrics
@@ -59,7 +55,7 @@ jobs:
   # -----------------------------------------------
   build-image:
     name: 2. Build & Push Docker Image
-    needs: model-training # Only runs if model training succeeded
+    needs: model-training
     runs-on: ubuntu-latest
 
     steps:
@@ -85,17 +81,16 @@ jobs:
         run: |
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          # Set output for the next job (though not strictly necessary here, it's good practice)
           echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
-          
+
   # -----------------------------------------------
   # Job 3: deploy-to-eks (CD Stage - Deployment)
   # -----------------------------------------------
   deploy-to-eks:
     name: 3. Deploy to EKS Cluster
-    needs: build-image # Only runs if the image build and push succeeded
+    needs: build-image
     runs-on: ubuntu-latest
-
+    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -113,22 +108,20 @@ jobs:
           aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
           
       - name: Update kubeconfig
-        # This command authenticates the runner to the EKS cluster
         run: |
+          # This command authenticates the runner to the EKS cluster
           aws eks update-kubeconfig --region ${{ secrets.AWS_DEFAULT_REGION }} --name flask-app-cluster
       
-      - name: Create Kubernetes Secret (Securely inject DAGsHub Token)
-        # This creates the secret that the Pods will read for MLflow auth
+      # -----------------------------------------------------------------
+      # THE FIX: Create Kubernetes Secret
+      # We must create a secret object for the token.
+      # -----------------------------------------------------------------
+      - name: Create Kubernetes Secret
         run: |
-          kubectl create secret generic capstone-secret \
+          kubectl create secret generic dagshub-token \
             --from-literal=DAGSHUB_USER_TOKEN='${{ secrets.DAGSHUB_USER_TOKEN }}' \
             --dry-run=client -o yaml | kubectl apply -f -
 
-      - name: Deploy Application and Service
+      - name: Deploy to EKS
         run: |
           kubectl apply -f deployment.yaml
-
-  # -----------------------------------------------
-  # Job 4: notify (Optional - Post-Deployment)
-  # -----------------------------------------------
-  # You would add a notification job here to slack/email on success.
