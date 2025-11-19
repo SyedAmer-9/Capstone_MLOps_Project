@@ -73,6 +73,9 @@ jobs:
   # -----------------------------------------------
   # Job 2: build-image (CD Stage - Application Packaging)
   # -----------------------------------------------
+  # -----------------------------------------------
+  # Job 2: build-image (CD Stage - Application Packaging)
+  # -----------------------------------------------
   build-image:
     name: 2. Build & Push Docker Image
     needs: model-training
@@ -82,34 +85,41 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
       
-      # -----------------------------------------------------------------
-      # NEW STEP: Configure AWS for Docker Build
-      # This is crucial. It injects the keys into the *runner's environment*
-      # so the 'docker build' command can run 'dvc pull' inside the container.
-      # -----------------------------------------------------------------
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
+          python-version: '3.12'
+          
+      # --- ARTIFACT DOWNLOAD ---
+      - name: Download Vectorizer
+        uses: actions/download-artifact@v4
+        with:
+          name: vectorizer-artifact
+          path: models/ # Should place vectorizer.pkl inside models/ folder
+
+      # --- DEBUGGING STEP (CRITICAL) ---
+      - name: DEBUG - List all files
+        run: |
+          echo "=== Listing root directory ==="
+          ls -la
+          echo "=== Listing models directory ==="
+          ls -R models/ || echo "models/ directory not found"
+      # ----------------------------------
 
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
         
-      - name: Debug - List Files
-        run: |
-          echo "Listing all files in the runner..."
-          ls -R
-      - name: Build, Tag, and Push Docker image to Amazon ECR
+      - name: Build and Push Image
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
           IMAGE_TAG: latest
         run: |
+          # Build using the files we just listed
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
   # -----------------------------------------------
   # Job 3: deploy-to-eks (CD Stage - Deployment)
   # -----------------------------------------------
