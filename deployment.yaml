@@ -16,7 +16,8 @@ spec:
     spec:
       containers:
       - name: flask-app
-        image: 020866158197.dkr.ecr.us-east-1.amazonaws.com/flask-app:latest
+        image: 258215414154.dkr.ecr.us-east-1.amazonaws.com/capstone_project:latest
+        imagePullPolicy: Always
         ports:
         - containerPort: 5001
         resources:
@@ -27,11 +28,11 @@ spec:
             memory: "512Mi"
             cpu: "1"
         env:
-        - name: CAPSTONE_TEST
+        - name: DAGSHUB_USER_TOKEN
           valueFrom:
             secretKeyRef:
-              name: capstone-secret
-              key: CAPSTONE_TEST
+              name: dagshub-token
+              key: DAGSHUB_USER_TOKEN
 
 ---
 apiVersion: v1
