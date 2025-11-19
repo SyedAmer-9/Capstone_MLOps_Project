@@ -32,12 +32,15 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
 
+      - name: Set up DVC
+        uses: iterative/setup-dvc@v1
       
+      - name: Pull DVC Data
+        run: dvc pull
 
       - name: Run DVC Pipeline (Ingest, Feat Eng, Train, Eval, Register)
         run: dvc repro
         env:
-          # Inject token for model_evaluation.py to register model
           DAGSHUB_USER_TOKEN: ${{ secrets.DAGSHUB_USER_TOKEN }}
           
       - name: DVC Push Artifacts
@@ -61,6 +64,14 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      
+      - name: Install DVC
+        run: pip install dvc dvc-s3
         
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -68,6 +79,9 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
+
+      - name: Pull vectorizer from DVC
+        run: dvc pull models/vectorizer.pkl
 
       - name: Login to Amazon ECR
         id: login-ecr
@@ -82,7 +96,7 @@ jobs:
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
-
+          
   # -----------------------------------------------
   # Job 3: deploy-to-eks (CD Stage - Deployment)
   # -----------------------------------------------
@@ -90,7 +104,7 @@ jobs:
     name: 3. Deploy to EKS Cluster
     needs: build-image
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -109,13 +123,8 @@ jobs:
           
       - name: Update kubeconfig
         run: |
-          # This command authenticates the runner to the EKS cluster
           aws eks update-kubeconfig --region ${{ secrets.AWS_DEFAULT_REGION }} --name flask-app-cluster
       
-      # -----------------------------------------------------------------
-      # THE FIX: Create Kubernetes Secret
-      # We must create a secret object for the token.
-      # -----------------------------------------------------------------
       - name: Create Kubernetes Secret
         run: |
           kubectl create secret generic dagshub-token \
