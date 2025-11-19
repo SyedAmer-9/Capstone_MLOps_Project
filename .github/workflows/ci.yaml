@@ -33,9 +33,7 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
 
-      - name: Set up DVC and Pull Data
-        uses: iterative/setup-dvc@v1
-        run: dvc pull
+      
 
       - name: Run DVC Pipeline (Ingest, Feat Eng, Train, Eval, Register)
         # This single command runs all 5 python scripts in order
