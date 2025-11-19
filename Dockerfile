@@ -24,6 +24,7 @@ COPY flask_app/ ./flask_app/
 COPY params.yaml .
 # Make sure this vectorizer path matches where your script saves it!
 # If it's in 'models/', use this:
+RUN mkdir -p models
 COPY models/vectorizer.pkl ./models/vectorizer.pkl
 
 # Expose port
