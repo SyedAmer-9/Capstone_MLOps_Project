@@ -15,10 +15,23 @@ RUN pip install --upgrade pip
 COPY flask_app/requirements.txt requirements.txt
 RUN pip install --default-timeout=100 --retries 5 -r requirements.txt
 
-# Download NLTK data
-RUN python -m nltk.downloader stopwords wordnet
+# --- DVC INTEGRATION FIX ---
+# Install AWS CLI inside the image for DVC to talk to S3
+RUN pip install awscli
 
-# Copy necessary files
+# COPY the DVC configuration files
+COPY .dvc/ .dvc/
+COPY .dvcignore .dvcignore
+COPY dvc.yaml dvc.yaml
+COPY dvc.lock dvc.lock
+
+# 1. PULL the Vectorizer (models/vectorizer.pkl) from S3 during the build
+# This requires that your GitHub Actions configured AWS credentials
+# before running docker build.
+RUN dvc pull models/vectorizer.pkl
+# --- END DVC INTEGRATION FIX ---
+
+# Copy app files
 COPY src/ ./src/
 COPY flask_app/ ./flask_app/
 COPY params.yaml .

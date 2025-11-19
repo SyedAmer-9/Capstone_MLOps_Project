@@ -1,17 +1,10 @@
-# This workflow runs the full MLOps pipeline and deploys the model application to EKS.
+name: CI Pipeline
 
-name: CI-CD Capstone EKS Pipeline
-
-on:
-  push:
-    branches: [ "main" ] # Trigger on pushes to main branch
+on: push
 
 jobs:
-  # -----------------------------------------------
-  # Job 1: model-training (The Factory / CI Stage)
-  # -----------------------------------------------
   model-training:
-    name: 1. Model Training & Registration
+    name: 1. Model Training & Metrics
     runs-on: ubuntu-latest
     
     env:  
@@ -30,7 +23,6 @@ jobs:
           python-version: '3.12'
 
       - name: Install dependencies
-        # Install all requirements including dvc-s3 and mlflow
         run: pip install -r requirements.txt
       
       - name: Configure AWS for DVC
@@ -40,51 +32,47 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
 
-      - name: Set up DVC and Pull Data
+      - name: Set up DVC
         uses: iterative/setup-dvc@v1
-        run: dvc pull # Get data from S3
-        
-      - name: Run DVC Pipeline (Train, Eval, Register)
+
+      - name: Pull DVC Data
+        run: dvc pull
+
+      - name: Run DVC Pipeline (Ingest, Feat Eng, Train, Eval, Register)
         run: dvc repro
         env:
+          # Inject token for model_evaluation.py to register model
           DAGSHUB_USER_TOKEN: ${{ secrets.DAGSHUB_USER_TOKEN }}
           
       - name: DVC Push Artifacts
-        run: dvc push # Push new model.pkl and vectorizer.pkl to S3
+        run: dvc push
         
-      # --- CRITICAL FIX: SAVE VECTORIZER AS ARTIFACT ---
-      - name: Upload Vectorizer for Docker Build
-        uses: actions/upload-artifact@v4
-        with:
-          name: vectorizer-artifact
-          path: models/vectorizer.pkl
-          
-      - name: Upload Metrics
+      - name: Save Metrics Artifact for Testing
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: model-metrics
           path: reports/metrics.json
-
+      - name: Pull DVC artifacts
+        run: |
+          dvc pull models/vectorizer.pkl
   # -----------------------------------------------
-  # Job 2: build-image (CD Stage - Packaging)
+  # Job 2: build-image (CD Stage - Application Packaging)
   # -----------------------------------------------
   build-image:
     name: 2. Build & Push Docker Image
-    needs: model-training # DEPENDENCY: Only run if model training succeeded
+    needs: model-training
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
       
-      # --- CRITICAL FIX: DOWNLOAD THE ARTIFACT ---
-      - name: Download Vectorizer for Docker Build
-        uses: actions/download-artifact@v4
-        with:
-          name: vectorizer-artifact
-          path: models/ # Puts vectorizer.pkl into the correct directory
-
+      # -----------------------------------------------------------------
+      # NEW STEP: Configure AWS for Docker Build
+      # This is crucial. It injects the keys into the *runner's environment*
+      # so the 'docker build' command can run 'dvc pull' inside the container.
+      # -----------------------------------------------------------------
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -96,25 +84,24 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
         
-      - name: Build and Push Image
+      - name: Build and Push Image (DVC Pull happens during build)
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
           IMAGE_TAG: latest
         run: |
-          # Docker build now finds models/vectorizer.pkl on the disk
+          # Build: DVC inside the Dockerfile handles pulling the vectorizer from S3.
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
-          
   # -----------------------------------------------
   # Job 3: deploy-to-eks (CD Stage - Deployment)
   # -----------------------------------------------
   deploy-to-eks:
     name: 3. Deploy to EKS Cluster
-    needs: build-image # DEPENDENCY: Only run if the image was successfully built
+    needs: build-image
     runs-on: ubuntu-latest
-
+    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -124,7 +111,7 @@ jobs:
         with:
           version: 'latest'
 
-      - name: Configure AWS EKS Credentials (for aws eks update-kubeconfig)
+      - name: Configure AWS EKS Credentials (via aws eks update-kubeconfig)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -133,9 +120,14 @@ jobs:
           
       - name: Update kubeconfig
         run: |
+          # This command authenticates the runner to the EKS cluster
           aws eks update-kubeconfig --region ${{ secrets.AWS_DEFAULT_REGION }} --name flask-app-cluster
       
-      - name: Create Kubernetes Secret (Securely inject DAGsHub Token)
+      # -----------------------------------------------------------------
+      # THE FIX: Create Kubernetes Secret
+      # We must create a secret object for the token.
+      # -----------------------------------------------------------------
+      - name: Create Kubernetes Secret
         run: |
           kubectl create secret generic dagshub-token \
             --from-literal=DAGSHUB_USER_TOKEN='${{ secrets.DAGSHUB_USER_TOKEN }}' \
