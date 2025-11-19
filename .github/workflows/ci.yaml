@@ -98,16 +98,14 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
         
-      - name: Build and Push Image (DVC Pull happens during build)
+      - name: Build, Tag, and Push Docker image to Amazon ECR
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
           IMAGE_TAG: latest
         run: |
-          # Build: DVC inside the Dockerfile handles pulling the vectorizer from S3.
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
   # -----------------------------------------------
   # Job 3: deploy-to-eks (CD Stage - Deployment)
   # -----------------------------------------------
@@ -125,7 +123,7 @@ jobs:
         with:
           version: 'latest'
 
-      - name: Configure AWS EKS Credentials (via aws eks update-kubeconfig)
+      - name: Configure AWS EKS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -134,17 +132,18 @@ jobs:
           
       - name: Update kubeconfig
         run: |
-          # This command authenticates the runner to the EKS cluster
           aws eks update-kubeconfig --region ${{ secrets.AWS_DEFAULT_REGION }} --name flask-app-cluster
       
       # -----------------------------------------------------------------
-      # THE FIX: Create Kubernetes Secret
-      # We must create a secret object for the token.
+      # FIX: Secure Secret Injection
+      # map the secret to an env var, then use the var in the command.
       # -----------------------------------------------------------------
       - name: Create Kubernetes Secret
+        env:
+          TOKEN: ${{ secrets.DAGSHUB_USER_TOKEN }}
         run: |
           kubectl create secret generic dagshub-token \
-            --from-literal=DAGSHUB_USER_TOKEN='${{ secrets.DAGSHUB_USER_TOKEN }}' \
+            --from-literal=DAGSHUB_USER_TOKEN="$TOKEN" \
             --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Deploy to EKS
