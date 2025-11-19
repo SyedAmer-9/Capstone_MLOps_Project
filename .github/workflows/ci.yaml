@@ -70,9 +70,7 @@ jobs:
       - name: Pull DVC artifacts
         run: |
           dvc pull models/vectorizer.pkl
-  # -----------------------------------------------
-  # Job 2: build-image (CD Stage - Application Packaging)
-  # -----------------------------------------------
+ 
   # -----------------------------------------------
   # Job 2: build-image (CD Stage - Application Packaging)
   # -----------------------------------------------
@@ -109,6 +107,12 @@ jobs:
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
+        env:
+          # Explicitly pass the region here to fix the "Region is missing" error
+          AWS_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
+          # Just to be safe, pass the credentials too, though configure-aws-credentials usually handles this
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         
       - name: Build and Push Image
         env:
